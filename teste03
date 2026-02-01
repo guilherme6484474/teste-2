@@ -1,0 +1,192 @@
+function Util.isLookingAtYou(char)
+    if not LocalPlayer.Character then return false end
+    local myHead = LocalPlayer.Character:FindFirstChild("Head")
+    local head = char:FindFirstChild("Head")
+    if not myHead or not head then return false end
+    local toYou = (myHead.Position - head.Position).Unit
+    return toYou:Dot(head.CFrame.LookVector) > Tuning.LookingThreshold
+end
+
+function Util.getName(char)
+    if Cache.names[char] then return Cache.names[char] end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Character == char then
+            Cache.names[char] = p.Name
+            return p.Name
+        end
+    end
+    local name = (not char.Name:match("^[Il]+")) and char.Name or "Player"
+    Cache.names[char] = name
+    return name
+end
+
+local Targets = {}
+
+function Targets.refresh()
+    local new, newTeam, newNames, newHum = {}, {}, {}, {}
+    local myChar = LocalPlayer.Character
+    Cache.myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local char = plr.Character
+            
+            if Team.isSpectator(char) then continue end
+            
+            local root = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChild("Humanoid")
+            if root and hum and hum.Health > 0 and root.Position.Y > -50 then
+                new[root] = char
+                newHum[root] = hum
+                newTeam[root] = Team.isTeammate(char)
+                if Cache.names[char] then newNames[char] = Cache.names[char] end
+            end
+        end
+    end
+    Cache.targets = new
+    Cache.humanoids = newHum
+    Cache.teamStatus = newTeam
+    Cache.names = newNames
+end
+
+function Targets.refreshVisibility()
+    local count = 0
+    for root, char in pairs(Cache.targets) do
+        count = count + 1
+        if count > 20 then
+            Cache.visibility[root] = false
+            Cache.lookingAtYou[root] = false
+        else
+            local vis = Util.isVisible(char)
+            Cache.visibility[root] = vis
+            Cache.lookingAtYou[root] = vis and Util.isLookingAtYou(char) or false
+        end
+    end
+end
+
+local ESP = { cache = {} }
+
+local function DrawLine(frame, x1, y1, x2, y2, color, thickness)
+    thickness = thickness or 1
+    local dx = x2 - x1
+    local dy = y2 - y1
+    local length = math.sqrt(dx * dx + dy * dy)
+    if length < 1 then
+        frame.Visible = false
+        return
+    end
+    local cx = (x1 + x2) / 2
+    local cy = (y1 + y2) / 2
+    local angle = math.atan2(dy, dx) * (180 / math.pi)
+    frame.AnchorPoint = Vector2.new(0.5, 0.5)
+    frame.Position = UDim2.new(0, cx, 0, cy)
+    frame.Size = UDim2.new(0, length, 0, thickness)
+    frame.Rotation = angle
+    if color then frame.BackgroundColor3 = color end
+    frame.Visible = true
+end
+
+function ESP.Create(root)
+    if ESP.cache[root] then return end
+    
+    local box = Instance.new("Frame")
+    box.BackgroundTransparency = 1
+    box.BorderSizePixel = 0
+    box.Visible = false
+    box.Parent = UI.ScreenGui
+    local boxStroke = Instance.new("UIStroke")
+    boxStroke.Thickness = 1
+    boxStroke.Parent = box
+    
+    local name = Instance.new("TextLabel")
+    name.BackgroundTransparency = 1
+    name.Font = Enum.Font.RobotoMono
+    name.TextSize = 13
+    name.TextColor3 = Color3.new(1, 1, 1)
+    name.TextStrokeTransparency = 0
+    name.Size = UDim2.new(0, 200, 0, 16)
+    name.TextXAlignment = Enum.TextXAlignment.Center
+    name.Visible = false
+    name.Parent = UI.ScreenGui
+    
+    local dist = Instance.new("TextLabel")
+    dist.BackgroundTransparency = 1
+    dist.Font = Enum.Font.RobotoMono
+    dist.TextSize = 11
+    dist.TextColor3 = Color3.fromRGB(180, 180, 180)
+    dist.TextStrokeTransparency = 0
+    dist.Size = UDim2.new(0, 200, 0, 14)
+    dist.TextXAlignment = Enum.TextXAlignment.Center
+    dist.Visible = false
+    dist.Parent = UI.ScreenGui
+    
+    local healthBg = Instance.new("Frame")
+    healthBg.BackgroundColor3 = Palette.HealthBg
+    healthBg.BorderSizePixel = 0
+    healthBg.Visible = false
+    healthBg.Parent = UI.ScreenGui
+    
+    local healthBar = Instance.new("Frame")
+    healthBar.BackgroundColor3 = Palette.HealthHigh
+    healthBar.BorderSizePixel = 0
+    healthBar.Visible = false
+    healthBar.Parent = UI.ScreenGui
+    
+    local skel = {}
+    for i = 1, 5 do
+        local line = Instance.new("Frame")
+        line.BackgroundColor3 = Palette.Skeleton
+        line.BorderSizePixel = 0
+        line.AnchorPoint = Vector2.new(0.5, 0.5)
+        line.Visible = false
+        line.Parent = UI.ScreenGui
+        skel[i] = line
+    end
+    
+    local aimLine = Instance.new("Frame")
+    aimLine.BackgroundColor3 = Palette.AimDir
+    aimLine.BorderSizePixel = 0
+    aimLine.AnchorPoint = Vector2.new(0.5, 0.5)
+    aimLine.Visible = false
+    aimLine.Parent = UI.ScreenGui
+    
+    local lookingText = Instance.new("TextLabel")
+    lookingText.BackgroundTransparency = 1
+    lookingText.Font = Enum.Font.RobotoMono
+    lookingText.TextSize = 13
+    lookingText.TextColor3 = Palette.LookingAtYou
+    lookingText.TextStrokeTransparency = 0
+    lookingText.Text = "[!] LOOKING"
+    lookingText.Size = UDim2.new(0, 150, 0, 16)
+    lookingText.TextXAlignment = Enum.TextXAlignment.Center
+    lookingText.Visible = false
+    lookingText.Parent = UI.ScreenGui
+    
+    local tracer = Instance.new("Frame")
+    tracer.BackgroundColor3 = Palette.Tracer
+    tracer.BorderSizePixel = 0
+    tracer.AnchorPoint = Vector2.new(0.5, 0.5)
+    tracer.Visible = false
+    tracer.Parent = UI.ScreenGui
+    
+    ESP.cache[root] = {
+        Box = box, BoxStroke = boxStroke,
+        Name = name, Dist = dist,
+        HealthBg = healthBg, HealthBar = healthBar,
+        Skel = skel,
+        AimLine = aimLine, LookingText = lookingText,
+        Tracer = tracer
+    }
+end
+
+function ESP.Hide(esp)
+    if not esp then return end
+    esp.Box.Visible = false
+    esp.Name.Visible = false
+    esp.Dist.Visible = false
+    esp.HealthBg.Visible = false
+    esp.HealthBar.Visible = false
+    for _, l in ipairs(esp.Skel) do l.Visible = false end
+    esp.AimLine.Visible = false
+    esp.LookingText.Visible = false
+    esp.Tracer.Visible = false
+end
