@@ -1,0 +1,250 @@
+--[[
+	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
+]]
+-- More open source scripts at https://xan.bar
+
+--This was made for xeno compatibility for a more robust script visit the original
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local GuiService = game:GetService("GuiService")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+local Config = {
+    ESP_Enabled = true,
+    ESP_Boxes = true,
+    ESP_Names = true,
+    ESP_Distance = true,
+    ESP_Skeleton = true,
+    ESP_Health = true,
+    ESP_TeamCheck = true,
+    ESP_MaxDist = 2000,
+    ESP_AimDir = true,
+    ESP_LookingAtYou = true,
+    ESP_Tracers = false,
+    ESP_FPV = false,
+    
+    RADAR_Enabled = true,
+    RADAR_Size = 120,
+    
+    AIM_Enabled = false,
+    AIM_FOV = 150,
+    AIM_Smooth = 15,
+    AIM_ShowFOV = true,
+    AIM_TeamCheck = true,
+    AIM_FPV = false,
+    
+    DESYNC_Enabled = false,
+    DESYNC_Amount = 2,
+    
+    TRIGGER_Enabled = false,
+    TRIGGER_Delay = 50,
+    TRIGGER_TeamCheck = true,
+    
+    MENU_Open = true,
+    MENU_Tab = 1
+}
+
+local Tuning = {
+    TargetRefreshRate = 0.3,
+    VisibilityRefreshRate = 0.2,
+    TeamRefreshRate = 3.0,
+    FPVRefreshRate = 2.0,
+    
+    BoxWidthRatio = 0.6,
+    HealthBarWidth = 4,
+    HealthBarOffset = 6,
+    NameOffset = 18,
+    DistOffset = 4,
+    
+    AimLineLength = 15,
+    LookingThreshold = 0.85,
+    FPVClusterDist = 100,
+    
+    RadarRange = 150,
+    RadarDotSize = 6,
+    
+    TriggerRadius = 50
+}
+
+local Palette = {
+    Enemy = Color3.fromRGB(255, 50, 50),
+    EnemyVisible = Color3.fromRGB(0, 255, 0),
+    Team = Color3.fromRGB(0, 150, 255),
+    Skeleton = Color3.fromRGB(255, 255, 255),
+    SkeletonVisible = Color3.fromRGB(0, 255, 0),
+    LookingAtYou = Color3.fromRGB(255, 255, 0),
+    AimDir = Color3.fromRGB(255, 150, 0),
+    FPV = Color3.fromRGB(255, 0, 255),
+    Tracer = Color3.fromRGB(255, 100, 100),
+    HealthHigh = Color3.fromRGB(0, 255, 0),
+    HealthMid = Color3.fromRGB(255, 255, 0),
+    HealthLow = Color3.fromRGB(255, 0, 0),
+    HealthBg = Color3.fromRGB(40, 40, 40),
+    
+    RadarBg = Color3.fromRGB(20, 20, 20),
+    RadarBorder = Color3.fromRGB(255, 50, 50),
+    RadarYou = Color3.fromRGB(0, 255, 0),
+    RadarEnemy = Color3.fromRGB(255, 50, 50),
+    
+    MenuBg = Color3.fromRGB(14, 14, 18),
+    MenuPanel = Color3.fromRGB(20, 20, 26),
+    MenuBorder = Color3.fromRGB(40, 40, 50),
+    MenuAccent = Color3.fromRGB(255, 50, 50),
+    MenuText = Color3.fromRGB(220, 220, 225),
+    MenuTextDim = Color3.fromRGB(110, 110, 120),
+    MenuOn = Color3.fromRGB(80, 220, 100),
+    MenuOff = Color3.fromRGB(55, 55, 65),
+    MenuTab = Color3.fromRGB(18, 18, 22),
+    
+    FOV_Circle = Color3.fromRGB(255, 255, 255),
+    FOV_Active = Color3.fromRGB(255, 50, 50)
+}
+
+local Timers = {
+    lastTargetRefresh = 0,
+    lastVisRefresh = 0,
+    lastTeamRefresh = 0,
+    lastFPVRefresh = 0
+}
+
+local Cache = {
+    targets = {},
+    humanoids = {},
+    teamStatus = {},
+    visibility = {},
+    lookingAtYou = {},
+    drones = {},
+    names = {},
+    myRoot = nil
+}
+
+local Teams = {
+    sets = {
+        {colors = {{R=0.172549,G=0.192157,B=0.372549}, {R=0.454902,G=0.407843,B=0}}},
+        {colors = {{R=0.454902,G=0.454902,B=0.454902}}},
+    },
+    localSet = nil
+}
+
+local Bones = {{"Head","Torso"},{"Torso","Left Arm"},{"Torso","Right Arm"},{"Torso","Left Leg"},{"Torso","Right Leg"}}
+
+local Connections = {}
+local Unloaded = false
+
+local UI = {}
+UI.ScreenGui = Instance.new("ScreenGui")
+UI.ScreenGui.Name = "LostFrontXeno"
+UI.ScreenGui.ResetOnSpawn = false
+UI.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+UI.ScreenGui.DisplayOrder = 999
+UI.ScreenGui.IgnoreGuiInset = true
+
+pcall(function() UI.ScreenGui.Parent = game:GetService("CoreGui") end)
+if not UI.ScreenGui.Parent then
+    UI.ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local Team = {}
+
+-- OLD METHOD (ArmBand Color Based) - optional
+--[[
+function Team.colorMatch(c1, c2)
+    return math.abs(c1.R-c2.R) < 0.03 and math.abs(c1.G-c2.G) < 0.03 and math.abs(c1.B-c2.B) < 0.03
+end
+
+function Team.getArmColor(char)
+    local ok, c = pcall(function()
+        return char:FindFirstChild("Right Arm") and char["Right Arm"]:FindFirstChild("ArmBand") and char["Right Arm"].ArmBand.Color
+    end)
+    return ok and c
+end
+
+function Team.update()
+    if LocalPlayer.Character then
+        local col = Team.getArmColor(LocalPlayer.Character)
+        if col then
+            for _, set in pairs(Teams.sets) do
+                for _, tc in pairs(set.colors) do
+                    if Team.colorMatch(col, tc) then Teams.localSet = set; return end
+                end
+            end
+        end
+    end
+end
+
+function Team.isTeammate_OLD(char)
+    if not Teams.localSet then return false end
+    local col = Team.getArmColor(char)
+    if not col then return false end
+    for _, tc in pairs(Teams.localSet.colors) do
+        if Team.colorMatch(col, tc) then return true end
+    end
+    return false
+end
+
+Connections.charAdded = LocalPlayer.CharacterAdded:Connect(function() task.delay(1, Team.update) end)
+task.spawn(Team.update)
+--]]
+
+-- NEW METHOD (Parent Based)
+function Team.isTeammate(char)
+    if not LocalPlayer.Character then return false end
+    if not char or not char.Parent then return false end
+    
+    local localParent = LocalPlayer.Character.Parent
+    local charParent = char.Parent
+    
+    if not localParent or not charParent then return false end
+    
+    if localParent == charParent then
+        return true
+    end
+    
+    return false
+end
+
+function Team.isSpectator(char)
+    if not char or not char.Parent then return true end
+    
+    local parentName = char.Parent.Name:lower()
+    if parentName:find("spectator") or parentName:find("dead") or parentName:find("observer") then
+        return true
+    end
+    
+    return false
+end
+
+local Util = {}
+
+function Util.isVisible(character)
+    if not character then return false end
+    local cam = Workspace.CurrentCamera
+    if not cam then return false end
+    
+    local origin = cam.CFrame.Position
+    local parts = {"Head", "Torso", "HumanoidRootPart"}
+    
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    local filter = {cam}
+    if LocalPlayer.Character then table.insert(filter, LocalPlayer.Character) end
+    table.insert(filter, character)
+    rayParams.FilterDescendantsInstances = filter
+    
+    for _, partName in pairs(parts) do
+        local part = character:FindFirstChild(partName)
+        if part then
+            local dir = (part.Position - origin)
+            local result = Workspace:Raycast(origin, dir.Unit * dir.Magnitude, rayParams)
+            if not result or (result.Position - part.Position).Magnitude < 5 then
+                return true
+            end
+        end
+    end
+    return false
+end
