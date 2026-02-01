@@ -1,0 +1,296 @@
+    local tabW = menuW / #Tabs
+    for i, tab in ipairs(Tabs) do
+        local btn = Instance.new("TextButton")
+        btn.Name = tab.name
+        btn.BackgroundColor3 = Palette.MenuTab
+        btn.BackgroundTransparency = 0.3
+        btn.BorderSizePixel = 0
+        btn.Position = UDim2.new(0, (i-1) * tabW, 0, 0)
+        btn.Size = UDim2.new(0, tabW, 1, 0)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 13
+        btn.TextColor3 = Palette.MenuTextDim
+        btn.Text = tab.name
+        btn.AutoButtonColor = false
+        btn.Parent = tabFrame
+        
+        local indicator = Instance.new("Frame")
+        indicator.Name = "Indicator"
+        indicator.BackgroundColor3 = Palette.MenuAccent
+        indicator.BorderSizePixel = 0
+        indicator.Position = UDim2.new(0, 0, 1, -2)
+        indicator.Size = UDim2.new(1, 0, 0, 2)
+        indicator.Visible = i == 1
+        indicator.Parent = btn
+        
+        btn.MouseButton1Click:Connect(function()
+            Config.MENU_Tab = i
+            GUI.UpdateTabs()
+            GUI.UpdateContent()
+        end)
+        
+        GUI.TabButtons[i] = {Button = btn, Indicator = indicator}
+    end
+    
+    local contentFrame = Instance.new("ScrollingFrame")
+    contentFrame.Name = "Content"
+    contentFrame.BackgroundTransparency = 1
+    contentFrame.Position = UDim2.new(0, 8, 0, titleH + tabH + 4)
+    contentFrame.Size = UDim2.new(1, -16, 1, -titleH - tabH - footerH - 8)
+    contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    contentFrame.ScrollBarThickness = 4
+    contentFrame.ScrollBarImageColor3 = Palette.MenuAccent
+    contentFrame.BorderSizePixel = 0
+    contentFrame.Parent = main
+    GUI.ContentFrame = contentFrame
+    
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 2)
+    layout.Parent = contentFrame
+    
+    local footer = Instance.new("Frame")
+    footer.Name = "Footer"
+    footer.BackgroundTransparency = 1
+    footer.Position = UDim2.new(0, 0, 1, -footerH)
+    footer.Size = UDim2.new(1, 0, 0, footerH)
+    footer.Parent = main
+    
+    local credit = Instance.new("TextLabel")
+    credit.BackgroundTransparency = 1
+    credit.Position = UDim2.new(0, 10, 0, 0)
+    credit.Size = UDim2.new(1, -20, 1, 0)
+    credit.Font = Enum.Font.RobotoMono
+    credit.TextSize = 11
+    credit.TextColor3 = Palette.MenuTextDim
+    credit.TextXAlignment = Enum.TextXAlignment.Right
+    credit.Text = "xan.bar"
+    credit.Parent = footer
+    
+    title.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            GUI.Dragging = true
+            local mouse = UserInputService:GetMouseLocation()
+            GUI.DragOffset = mouse - Vector2.new(main.AbsolutePosition.X, main.AbsolutePosition.Y)
+        end
+    end)
+    
+    title.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            GUI.Dragging = false
+        end
+    end)
+    
+    GUI.UpdateContent()
+end
+
+function GUI.UpdateTabs()
+    for i, tab in ipairs(GUI.TabButtons) do
+        local isSelected = i == Config.MENU_Tab
+        tab.Button.BackgroundTransparency = isSelected and 0.1 or 0.5
+        tab.Button.TextColor3 = isSelected and Color3.new(1, 1, 1) or Palette.MenuTextDim
+        tab.Indicator.Visible = isSelected
+    end
+end
+
+function GUI.UpdateContent()
+    for _, child in ipairs(GUI.ContentFrame:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+    GUI.Items = {}
+    
+    local order = 0
+    for _, menuItem in ipairs(MenuItems) do
+        if menuItem.tab == Config.MENU_Tab then
+            order = order + 1
+            local itemH = menuItem.type == "slider" and 38 or 24
+            
+            local item = Instance.new("Frame")
+            item.Name = menuItem.name
+            item.BackgroundColor3 = menuItem.type == "label" and Palette.MenuBg or Palette.MenuPanel
+            item.BackgroundTransparency = menuItem.type == "label" and 0.5 or 0.1
+            item.BorderSizePixel = 0
+            item.Size = UDim2.new(1, 0, 0, itemH)
+            item.LayoutOrder = order
+            item.Parent = GUI.ContentFrame
+            
+            local label = Instance.new("TextLabel")
+            label.BackgroundTransparency = 1
+            label.Position = UDim2.new(0, 8, 0, 0)
+            label.Size = UDim2.new(0.6, 0, 0, 24)
+            label.Font = Enum.Font.RobotoMono
+            label.TextSize = menuItem.type == "label" and 12 or 11
+            label.TextColor3 = menuItem.type == "label" and Palette.MenuAccent or Palette.MenuText
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.Text = menuItem.name
+            label.Parent = item
+            
+            if menuItem.type == "toggle" then
+                local toggle = Instance.new("Frame")
+                toggle.Name = "Toggle"
+                toggle.BackgroundColor3 = Config[menuItem.key] and Palette.MenuOn or Palette.MenuOff
+                toggle.BorderSizePixel = 0
+                toggle.Position = UDim2.new(1, -40, 0.5, -7)
+                toggle.Size = UDim2.new(0, 28, 0, 14)
+                toggle.Parent = item
+                Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 7)
+                
+                local knob = Instance.new("Frame")
+                knob.Name = "Knob"
+                knob.BackgroundColor3 = Color3.new(1, 1, 1)
+                knob.BorderSizePixel = 0
+                knob.Position = Config[menuItem.key] and UDim2.new(1, -12, 0.5, -5) or UDim2.new(0, 2, 0.5, -5)
+                knob.Size = UDim2.new(0, 10, 0, 10)
+                knob.Parent = toggle
+                Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+                
+                local btn = Instance.new("TextButton")
+                btn.BackgroundTransparency = 1
+                btn.Size = UDim2.new(1, 0, 1, 0)
+                btn.Text = ""
+                btn.Parent = item
+                
+                btn.MouseButton1Click:Connect(function()
+                    Config[menuItem.key] = not Config[menuItem.key]
+                    toggle.BackgroundColor3 = Config[menuItem.key] and Palette.MenuOn or Palette.MenuOff
+                    knob.Position = Config[menuItem.key] and UDim2.new(1, -12, 0.5, -5) or UDim2.new(0, 2, 0.5, -5)
+                end)
+                
+            elseif menuItem.type == "slider" then
+                local val = Config[menuItem.key]
+                local valText = menuItem.step < 1 and string.format("%.2f", val) or tostring(math.floor(val))
+                
+                local valLabel = Instance.new("TextLabel")
+                valLabel.Name = "Value"
+                valLabel.BackgroundTransparency = 1
+                valLabel.Position = UDim2.new(1, -50, 0, 0)
+                valLabel.Size = UDim2.new(0, 45, 0, 20)
+                valLabel.Font = Enum.Font.RobotoMono
+                valLabel.TextSize = 11
+                valLabel.TextColor3 = Palette.MenuTextDim
+                valLabel.TextXAlignment = Enum.TextXAlignment.Right
+                valLabel.Text = valText
+                valLabel.Parent = item
+                
+                local track = Instance.new("Frame")
+                track.Name = "Track"
+                track.BackgroundColor3 = Palette.MenuOff
+                track.BorderSizePixel = 0
+                track.Position = UDim2.new(0, 8, 0, 24)
+                track.Size = UDim2.new(1, -16, 0, 6)
+                track.Parent = item
+                Instance.new("UICorner", track).CornerRadius = UDim.new(0, 3)
+                
+                local pct = (val - menuItem.min) / (menuItem.max - menuItem.min)
+                local fill = Instance.new("Frame")
+                fill.Name = "Fill"
+                fill.BackgroundColor3 = Palette.MenuAccent
+                fill.BorderSizePixel = 0
+                fill.Size = UDim2.new(pct, 0, 1, 0)
+                fill.Parent = track
+                Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 3)
+                
+                local dragging = false
+                track.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        dragging = true
+                    end
+                end)
+                track.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        dragging = false
+                    end
+                end)
+                
+                Connections["slider_" .. menuItem.key] = RunService.RenderStepped:Connect(function()
+                    if dragging then
+                        local mx = UserInputService:GetMouseLocation().X
+                        local tx = track.AbsolutePosition.X
+                        local tw = track.AbsoluteSize.X
+                        local p = math.clamp((mx - tx) / tw, 0, 1)
+                        local v = menuItem.min + p * (menuItem.max - menuItem.min)
+                        v = math.floor(v / menuItem.step + 0.5) * menuItem.step
+                        Config[menuItem.key] = math.clamp(v, menuItem.min, menuItem.max)
+                        fill.Size = UDim2.new((Config[menuItem.key] - menuItem.min) / (menuItem.max - menuItem.min), 0, 1, 0)
+                        valLabel.Text = menuItem.step < 1 and string.format("%.2f", Config[menuItem.key]) or tostring(math.floor(Config[menuItem.key]))
+                    end
+                end)
+            end
+            
+            GUI.Items[#GUI.Items + 1] = item
+        end
+    end
+    
+    local totalH = 0
+    for _, item in ipairs(GUI.Items) do
+        totalH = totalH + item.AbsoluteSize.Y + 2
+    end
+    GUI.ContentFrame.CanvasSize = UDim2.new(0, 0, 0, totalH)
+end
+
+function GUI.Step()
+    if GUI.Dragging then
+        local mouse = UserInputService:GetMouseLocation()
+        local newPos = mouse - GUI.DragOffset
+        GUI.Frame.Position = UDim2.new(0, newPos.X, 0, newPos.Y)
+    end
+end
+
+local function Unload()
+    if Unloaded then return end
+    Unloaded = true
+    
+    Config.DESYNC_Enabled = false
+    Config.TRIGGER_Enabled = false
+    Desync.active = false
+    Trigger.active = false
+    
+    pcall(function() RunService:UnbindFromRenderStep("AimbotCore") end)
+    
+    for _, c in pairs(Connections) do pcall(function() c:Disconnect() end) end
+    
+    for _, esp in pairs(ESP.cache) do ESP.Destroy(esp) end
+    for _, esp in pairs(FPV.cache) do FPV.Destroy(esp) end
+    
+    pcall(function() UI.ScreenGui:Destroy() end)
+end
+
+Connections.input = UserInputService.InputBegan:Connect(function(input, gp)
+    if input.KeyCode == Enum.KeyCode.Home then Unload(); return end
+    if input.KeyCode == Enum.KeyCode.Insert and not gp then
+        Config.MENU_Open = not Config.MENU_Open
+        if GUI.Frame then GUI.Frame.Visible = Config.MENU_Open end
+        return
+    end
+end)
+
+Connections.inputUp = UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then GUI.Dragging = false end
+end)
+
+Connections.render = RunService.RenderStepped:Connect(function()
+    if Unloaded then return end
+    
+    local cam = Workspace.CurrentCamera
+    if not cam then return end
+    local screenSize = cam.ViewportSize
+    local screenCenter = Vector2.new(screenSize.X/2, screenSize.Y/2)
+    local now = tick()
+    
+    local myChar = LocalPlayer.Character
+    Cache.myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    
+    if now - Timers.lastTeamRefresh > Tuning.TeamRefreshRate then Timers.lastTeamRefresh = now; Team.update() end
+    if now - Timers.lastTargetRefresh > Tuning.TargetRefreshRate then Timers.lastTargetRefresh = now; Targets.refresh() end
+    if now - Timers.lastVisRefresh > Tuning.VisibilityRefreshRate then Timers.lastVisRefresh = now; Targets.refreshVisibility() end
+    if now - Timers.lastFPVRefresh > Tuning.FPVRefreshRate then Timers.lastFPVRefresh = now; Cache.drones = FPV.Scan() end
+    
+    pcall(function() ESP.Step(cam, screenSize, screenCenter) end)
+    pcall(function() FPV.Step(cam) end)
+    pcall(function() UpdateRadar(cam) end)
+    pcall(function() Aimbot.Step(cam, screenCenter) end)
+    pcall(GUI.Step)
+end)
+
+GUI.Create()
+GUI.UpdateTabs()
