@@ -1,0 +1,262 @@
+local radarDots = {}
+local RadarFrame = Instance.new("Frame")
+RadarFrame.Name = "Radar"
+RadarFrame.BackgroundColor3 = Palette.RadarBg
+RadarFrame.BackgroundTransparency = 0.15
+RadarFrame.BorderSizePixel = 0
+RadarFrame.AnchorPoint = Vector2.new(1, 0)
+RadarFrame.Parent = UI.ScreenGui
+
+local RadarStroke = Instance.new("UIStroke")
+RadarStroke.Color = Palette.RadarBorder
+RadarStroke.Thickness = 2
+RadarStroke.Parent = RadarFrame
+
+local RadarCross1 = Instance.new("Frame")
+RadarCross1.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+RadarCross1.BorderSizePixel = 0
+RadarCross1.AnchorPoint = Vector2.new(0.5, 0)
+RadarCross1.Parent = RadarFrame
+
+local RadarCross2 = Instance.new("Frame")
+RadarCross2.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+RadarCross2.BorderSizePixel = 0
+RadarCross2.AnchorPoint = Vector2.new(0, 0.5)
+RadarCross2.Parent = RadarFrame
+
+local RadarCenter = Instance.new("Frame")
+RadarCenter.BackgroundColor3 = Palette.RadarYou
+RadarCenter.BorderSizePixel = 0
+RadarCenter.AnchorPoint = Vector2.new(0.5, 0.5)
+RadarCenter.Size = UDim2.new(0, 8, 0, 8)
+RadarCenter.Parent = RadarFrame
+Instance.new("UICorner", RadarCenter).CornerRadius = UDim.new(0, 2)
+
+for i = 1, 50 do
+    local dot = Instance.new("Frame")
+    dot.BackgroundColor3 = Palette.RadarEnemy
+    dot.BorderSizePixel = 0
+    dot.AnchorPoint = Vector2.new(0.5, 0.5)
+    dot.Size = UDim2.new(0, Tuning.RadarDotSize, 0, Tuning.RadarDotSize)
+    dot.Visible = false
+    dot.Parent = RadarFrame
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(0, 2)
+    radarDots[i] = dot
+end
+
+local fpvRadarDots = {}
+for i = 1, 10 do
+    local dot = Instance.new("Frame")
+    dot.BackgroundColor3 = Palette.FPV
+    dot.BorderSizePixel = 0
+    dot.AnchorPoint = Vector2.new(0.5, 0.5)
+    dot.Size = UDim2.new(0, 8, 0, 8)
+    dot.Visible = false
+    dot.Parent = RadarFrame
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+    fpvRadarDots[i] = dot
+end
+
+local function UpdateRadar(cam)
+    if not Config.RADAR_Enabled then
+        RadarFrame.Visible = false
+        return
+    end
+    
+    local myRoot = Cache.myRoot
+    if not myRoot or not myRoot.Parent then
+        RadarFrame.Visible = false
+        return
+    end
+    
+    local size = Config.RADAR_Size
+    RadarFrame.Position = UDim2.new(1, -10, 0, 10)
+    RadarFrame.Size = UDim2.new(0, size, 0, size)
+    RadarFrame.Visible = true
+    
+    RadarCross1.Position = UDim2.new(0.5, 0, 0, 10)
+    RadarCross1.Size = UDim2.new(0, 1, 1, -20)
+    RadarCross2.Position = UDim2.new(0, 10, 0.5, 0)
+    RadarCross2.Size = UDim2.new(1, -20, 0, 1)
+    RadarCenter.Position = UDim2.new(0.5, 0, 0.5, 0)
+    
+    local myLook = cam.CFrame.LookVector
+    local myAngle = math.atan2(-myLook.X, -myLook.Z)
+    local cosA, sinA = math.cos(myAngle), math.sin(myAngle)
+    local scale = (size/2 - 10) / Tuning.RadarRange
+    
+    local idx = 1
+    for root, char in pairs(Cache.targets) do
+        if idx > #radarDots then break end
+        if root and root.Parent then
+            local isTeam = Cache.teamStatus[root]
+            if not (Config.ESP_TeamCheck and isTeam) then
+                local rx, rz = root.Position.X - myRoot.Position.X, root.Position.Z - myRoot.Position.Z
+                local dist2D = math.sqrt(rx^2 + rz^2)
+                if dist2D < Tuning.RadarRange then
+                    local rotX = rx * cosA - rz * sinA
+                    local rotZ = rx * sinA + rz * cosA
+                    local radarX, radarY = rotX * scale, rotZ * scale
+                    local maxD = size/2 - 8
+                    local rDist = math.sqrt(radarX^2 + radarY^2)
+                    if rDist > maxD then radarX, radarY = radarX/rDist*maxD, radarY/rDist*maxD end
+                    
+                    radarDots[idx].Position = UDim2.new(0.5, radarX, 0.5, radarY)
+                    radarDots[idx].BackgroundColor3 = isTeam and Palette.Team or Palette.RadarEnemy
+                    radarDots[idx].Visible = true
+                    idx = idx + 1
+                end
+            end
+        end
+    end
+    for i = idx, #radarDots do radarDots[i].Visible = false end
+    
+    local fpvIdx = 1
+    if Config.ESP_FPV then
+        for _, part in pairs(Cache.drones) do
+            if fpvIdx > #fpvRadarDots then break end
+            local rx, rz = part.Position.X - myRoot.Position.X, part.Position.Z - myRoot.Position.Z
+            local dist2D = math.sqrt(rx^2 + rz^2)
+            if dist2D < Tuning.RadarRange then
+                local rotX = rx * cosA - rz * sinA
+                local rotZ = rx * sinA + rz * cosA
+                local radarX, radarY = rotX * scale, rotZ * scale
+                local maxD = size/2 - 8
+                local rDist = math.sqrt(radarX^2 + radarY^2)
+                if rDist > maxD then radarX, radarY = radarX/rDist*maxD, radarY/rDist*maxD end
+                fpvRadarDots[fpvIdx].Position = UDim2.new(0.5, radarX, 0.5, radarY)
+                fpvRadarDots[fpvIdx].Visible = true
+                fpvIdx = fpvIdx + 1
+            end
+        end
+    end
+    for i = fpvIdx, #fpvRadarDots do fpvRadarDots[i].Visible = false end
+end
+
+local FOVCircle = Instance.new("Frame")
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.BorderSizePixel = 0
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.Parent = UI.ScreenGui
+local FOVStroke = Instance.new("UIStroke")
+FOVStroke.Color = Palette.FOV_Circle
+FOVStroke.Thickness = 1
+FOVStroke.Parent = FOVCircle
+Instance.new("UICorner", FOVCircle).CornerRadius = UDim.new(1, 0)
+
+local Aimbot = { aiming = false, locked = nil, lockedFPV = false }
+
+Connections.mb2down = Mouse.Button2Down:Connect(function() Aimbot.aiming = true; Aimbot.locked = nil; Aimbot.lockedFPV = false end)
+Connections.mb2up = Mouse.Button2Up:Connect(function() Aimbot.aiming = false; Aimbot.locked = nil; Aimbot.lockedFPV = false end)
+
+function Aimbot.GetBest(cam)
+    local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return nil end
+    local best, bestDist, isFPV = nil, math.huge, false
+    for root, char in pairs(Cache.targets) do
+        if root and root.Parent and char then
+            if not (Config.AIM_TeamCheck and Cache.teamStatus[root]) then
+                local head = char:FindFirstChild("Head")
+                if head then
+                    local sp, on = cam:WorldToViewportPoint(head.Position)
+                    if on and sp.Z > 0 then
+                        local sDist = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+                        if sDist <= Config.AIM_FOV then
+                            local wDist = (root.Position - myRoot.Position).Magnitude
+                            if wDist < bestDist then bestDist = wDist; best = char; isFPV = false end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if Config.AIM_FPV then
+        for drone, part in pairs(Cache.drones) do
+            if drone and part and part.Parent then
+                local sp, on = cam:WorldToViewportPoint(part.Position)
+                if on and sp.Z > 0 then
+                    local sDist = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+                    if sDist <= Config.AIM_FOV then
+                        local wDist = (part.Position - myRoot.Position).Magnitude
+                        if wDist < bestDist then bestDist = wDist; best = drone; isFPV = true end
+                    end
+                end
+            end
+        end
+    end
+    return best, isFPV
+end
+
+function Aimbot.Step(cam, screenCenter)
+    local guiInset = GuiService:GetGuiInset()
+    
+    if Config.AIM_Enabled and Config.AIM_ShowFOV then
+        FOVCircle.Position = UDim2.new(0, screenCenter.X, 0, screenCenter.Y + guiInset.Y)
+        FOVCircle.Size = UDim2.new(0, Config.AIM_FOV * 2, 0, Config.AIM_FOV * 2)
+        FOVStroke.Color = (Aimbot.aiming and Aimbot.locked) and Palette.FOV_Active or Palette.FOV_Circle
+        FOVCircle.Visible = true
+    else
+        FOVCircle.Visible = false
+    end
+end
+
+RunService:BindToRenderStep("AimbotCore", Enum.RenderPriority.Camera.Value + 1, function()
+    if Unloaded or not Config.AIM_Enabled then return end
+    local rmb = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    if not (Aimbot.aiming or rmb) then Aimbot.locked = nil; Aimbot.lockedFPV = false; return end
+    
+    local cam = Workspace.CurrentCamera
+    if not cam then return end
+    
+    local needNewTarget = not Aimbot.locked or not Aimbot.locked.Parent
+    if not needNewTarget and not Aimbot.lockedFPV then
+        needNewTarget = not Aimbot.locked:FindFirstChild("Head")
+    end
+    if needNewTarget then
+        local target, isFPV = Aimbot.GetBest(cam)
+        Aimbot.locked = target
+        Aimbot.lockedFPV = isFPV or false
+    end
+    if not Aimbot.locked then return end
+    
+    local aimPos
+    if Aimbot.lockedFPV then
+        local part = Cache.drones[Aimbot.locked]
+        if not part or not part.Parent then Aimbot.locked = nil; Aimbot.lockedFPV = false; return end
+        aimPos = part.Position
+    else
+        local head = Aimbot.locked:FindFirstChild("Head")
+        local hum = Aimbot.locked:FindFirstChild("Humanoid")
+        if not head or not hum or hum.Health <= 0 then Aimbot.locked = nil; return end
+        aimPos = head.Position
+    end
+    
+    local goal = CFrame.lookAt(cam.CFrame.Position, aimPos)
+    local newCF
+    if Config.AIM_Smooth <= 0 then
+        newCF = goal
+    else
+        local alpha = math.clamp(0.9 - (Config.AIM_Smooth/100)*0.8, 0.1, 0.9)
+        newCF = cam.CFrame:Lerp(goal, alpha)
+    end
+    cam.CFrame = newCF
+    
+    pcall(function()
+        local vm = cam:FindFirstChild("ViewModel")
+        if vm then
+            local cb = vm:FindFirstChild("CameraBone")
+            if cb then cb.CFrame = newCF end
+            local hrp = vm:FindFirstChild("HRP")
+            if hrp then hrp.CFrame = newCF end
+        end
+    end)
+    
+    pcall(function()
+        local net = game.ReplicatedStorage:FindFirstChild("network")
+        if net then
+            local lv = net:FindFirstChild("characterLookvector")
+            if lv then lv:FireServer(newCF.LookVector) end
+        end
+    end)
+end)
