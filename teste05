@@ -1,0 +1,140 @@
+local FPV = {
+    cache = {},
+    partNames = {"Blade_BL", "Blade_BR", "Blade_FL", "Blade_FR", "Explosive", "Explosive1", "Rotator_BL", "Rotator_BR", "Rotator_FL", "Rotator_FR", "FPV"}
+}
+
+local fpvNameSet = {}
+for _, n in ipairs(FPV.partNames) do fpvNameSet[n] = true end
+
+function FPV.Create(drone)
+    if FPV.cache[drone] then return end
+    
+    local box = Instance.new("Frame")
+    box.BackgroundTransparency = 1
+    box.BorderSizePixel = 0
+    box.Visible = false
+    box.Parent = UI.ScreenGui
+    local boxStroke = Instance.new("UIStroke")
+    boxStroke.Thickness = 2
+    boxStroke.Color = Palette.FPV
+    boxStroke.Parent = box
+    
+    local name = Instance.new("TextLabel")
+    name.BackgroundTransparency = 1
+    name.Font = Enum.Font.RobotoMono
+    name.TextSize = 13
+    name.TextColor3 = Palette.FPV
+    name.TextStrokeTransparency = 0
+    name.Text = "[FPV DRONE]"
+    name.Size = UDim2.new(0, 150, 0, 16)
+    name.TextXAlignment = Enum.TextXAlignment.Center
+    name.Visible = false
+    name.Parent = UI.ScreenGui
+    
+    local dist = Instance.new("TextLabel")
+    dist.BackgroundTransparency = 1
+    dist.Font = Enum.Font.RobotoMono
+    dist.TextSize = 11
+    dist.TextColor3 = Palette.FPV
+    dist.TextStrokeTransparency = 0
+    dist.Size = UDim2.new(0, 100, 0, 14)
+    dist.TextXAlignment = Enum.TextXAlignment.Center
+    dist.Visible = false
+    dist.Parent = UI.ScreenGui
+    
+    FPV.cache[drone] = {Box = box, BoxStroke = boxStroke, Name = name, Dist = dist}
+end
+
+function FPV.Hide(esp)
+    if not esp then return end
+    esp.Box.Visible = false
+    esp.Name.Visible = false
+    esp.Dist.Visible = false
+end
+
+function FPV.Destroy(esp)
+    if not esp then return end
+    pcall(function() esp.Box:Destroy() end)
+    pcall(function() esp.Name:Destroy() end)
+    pcall(function() esp.Dist:Destroy() end)
+end
+
+function FPV.Scan()
+    if not Config.ESP_FPV then return Cache.drones or {} end
+    local drones, seen, count = {}, {}, 0
+    local camRef = Workspace.CurrentCamera
+    local plrs = Players:GetPlayers()
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if count >= 10 then break end
+        if obj:IsA("BasePart") and fpvNameSet[obj.Name] then
+            local model = obj.Parent
+            if model and model:IsA("Model") and not seen[model] then
+                local skip = false
+                if camRef and model:IsDescendantOf(camRef) then skip = true end
+                if not skip then
+                    for i = 1, #plrs do
+                        if plrs[i].Character and model:IsDescendantOf(plrs[i].Character) then skip = true; break end
+                    end
+                end
+                if not skip then
+                    seen[model] = true
+                    local center = model:FindFirstChild("Explosive") or model:FindFirstChild("FPV") or obj
+                    drones[model] = center
+                    count = count + 1
+                end
+            end
+        end
+    end
+    return drones
+end
+
+function FPV.Step(cam)
+    if not Config.ESP_Enabled or not Config.ESP_FPV then
+        for _, esp in pairs(FPV.cache) do FPV.Hide(esp) end
+        return
+    end
+    
+    local screenPos, toShow = {}, {}
+    for drone, part in pairs(Cache.drones) do
+        local sp, on = cam:WorldToViewportPoint(part.Position)
+        if on and sp.Z > 0 then
+            local tooClose = false
+            for _, ex in pairs(screenPos) do
+                if math.sqrt((sp.X - ex.X)^2 + (sp.Y - ex.Y)^2) < Tuning.FPVClusterDist then
+                    tooClose = true
+                    break
+                end
+            end
+            if not tooClose then
+                screenPos[drone] = sp
+                toShow[drone] = part
+            end
+        end
+    end
+    
+    for drone, esp in pairs(FPV.cache) do
+        if not toShow[drone] then FPV.Hide(esp); FPV.Destroy(esp); FPV.cache[drone] = nil end
+    end
+    
+    local myRoot = Cache.myRoot
+    for drone, part in pairs(toShow) do
+        if not FPV.cache[drone] then FPV.Create(drone) end
+        local esp = FPV.cache[drone]
+        local sp = screenPos[drone]
+        local dist = myRoot and (part.Position - myRoot.Position).Magnitude or 0
+        
+        if dist < Config.ESP_MaxDist then
+            local size = math.clamp(1000 / sp.Z, 20, 100)
+            esp.Box.Position = UDim2.new(0, sp.X - size/2, 0, sp.Y - size/2)
+            esp.Box.Size = UDim2.new(0, size, 0, size)
+            esp.Box.Visible = true
+            esp.Name.Position = UDim2.new(0, sp.X - 75, 0, sp.Y - size/2 - 18)
+            esp.Name.Visible = true
+            esp.Dist.Position = UDim2.new(0, sp.X - 50, 0, sp.Y + size/2 + 4)
+            esp.Dist.Text = math.floor(dist) .. "m"
+            esp.Dist.Visible = true
+        else
+            FPV.Hide(esp)
+        end
+    end
+end
