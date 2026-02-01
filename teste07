@@ -1,0 +1,198 @@
+local Desync = { active = false }
+
+function Desync.Run()
+    Desync.active = true
+    while Desync.active and Config.DESYNC_Enabled and not Unloaded do
+        pcall(function()
+            if not LocalPlayer.Character then return end
+            local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if not root then return end
+            local a = Config.DESYNC_Amount
+            local cf = root.CFrame
+            root.CFrame = cf * CFrame.new(math.random(-a,a)*0.1, 0, math.random(-a,a)*0.1)
+            task.wait(0.01)
+            root.CFrame = cf
+        end)
+        task.wait(0.1 + 0.3/math.max(Config.DESYNC_Amount, 1))
+    end
+    Desync.active = false
+end
+
+task.spawn(function()
+    while not Unloaded do
+        if Config.DESYNC_Enabled and not Desync.active then task.spawn(Desync.Run) end
+        task.wait(0.5)
+    end
+end)
+
+local Trigger = { active = false, lastShot = 0 }
+
+function Trigger.Check(cam)
+    local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+    for root, char in pairs(Cache.targets) do
+        if root and char then
+            if Config.TRIGGER_TeamCheck and Cache.teamStatus[root] then continue end
+            local hum = char:FindFirstChild("Humanoid")
+            if not hum or hum.Health <= 0 then continue end
+            for _, pn in pairs({"Head", "Torso", "HumanoidRootPart"}) do
+                local p = char:FindFirstChild(pn)
+                if p then
+                    local sp, on = cam:WorldToViewportPoint(p.Position)
+                    if on and sp.Z > 0 and (Vector2.new(sp.X, sp.Y) - center).Magnitude < Tuning.TriggerRadius then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+
+function Trigger.Shoot()
+    pcall(function() if mouse1click then mouse1click() end end)
+    pcall(function()
+        local vim = game:GetService("VirtualInputManager")
+        vim:SendMouseButtonEvent(0,0,0,true,game,1)
+        task.wait(0.01)
+        vim:SendMouseButtonEvent(0,0,0,false,game,1)
+    end)
+end
+
+function Trigger.Run()
+    Trigger.active = true
+    while Config.TRIGGER_Enabled and not Unloaded do
+        pcall(function()
+            local cam = Workspace.CurrentCamera
+            if cam and Trigger.Check(cam) then
+                local now = tick() * 1000
+                if now - Trigger.lastShot >= Config.TRIGGER_Delay then
+                    Trigger.Shoot()
+                    Trigger.lastShot = now
+                end
+            end
+        end)
+        task.wait(0.016)
+    end
+    Trigger.active = false
+end
+
+task.spawn(function()
+    while not Unloaded do
+        if Config.TRIGGER_Enabled and not Trigger.active then task.spawn(Trigger.Run) end
+        task.wait(0.3)
+    end
+end)
+
+local Tabs = {{name = "ESP"}, {name = "AIM"}, {name = "MISC"}}
+local MenuItems = {
+    {tab = 1, name = "VISUALS", type = "label"},
+    {tab = 1, name = "Enable ESP", key = "ESP_Enabled", type = "toggle"},
+    {tab = 1, name = "Boxes", key = "ESP_Boxes", type = "toggle"},
+    {tab = 1, name = "Names", key = "ESP_Names", type = "toggle"},
+    {tab = 1, name = "Distance", key = "ESP_Distance", type = "toggle"},
+    {tab = 1, name = "Skeleton", key = "ESP_Skeleton", type = "toggle"},
+    {tab = 1, name = "Health Bar", key = "ESP_Health", type = "toggle"},
+    {tab = 1, name = "Aim Direction", key = "ESP_AimDir", type = "toggle"},
+    {tab = 1, name = "Looking At You", key = "ESP_LookingAtYou", type = "toggle"},
+    {tab = 1, name = "Tracers", key = "ESP_Tracers", type = "toggle"},
+    {tab = 1, name = "FPV Drones", key = "ESP_FPV", type = "toggle"},
+    {tab = 1, name = "Team Check", key = "ESP_TeamCheck", type = "toggle"},
+    {tab = 1, name = "Max Distance", key = "ESP_MaxDist", type = "slider", min = 500, max = 5000, step = 100},
+    {tab = 1, name = "RADAR", type = "label"},
+    {tab = 1, name = "Enable Radar", key = "RADAR_Enabled", type = "toggle"},
+    {tab = 1, name = "Radar Size", key = "RADAR_Size", type = "slider", min = 80, max = 200, step = 10},
+    
+    {tab = 2, name = "AIMBOT", type = "label"},
+    {tab = 2, name = "Enable Aimbot", key = "AIM_Enabled", type = "toggle"},
+    {tab = 2, name = "FOV", key = "AIM_FOV", type = "slider", min = 50, max = 500, step = 25},
+    {tab = 2, name = "Smooth", key = "AIM_Smooth", type = "slider", min = 0, max = 100, step = 5},
+    {tab = 2, name = "Show FOV", key = "AIM_ShowFOV", type = "toggle"},
+    {tab = 2, name = "Team Check", key = "AIM_TeamCheck", type = "toggle"},
+    {tab = 2, name = "Target FPV", key = "AIM_FPV", type = "toggle"},
+    
+    {tab = 3, name = "DESYNC", type = "label"},
+    {tab = 3, name = "Enable Desync", key = "DESYNC_Enabled", type = "toggle"},
+    {tab = 3, name = "Strength", key = "DESYNC_Amount", type = "slider", min = 1, max = 10, step = 1},
+    {tab = 3, name = "TRIGGERBOT", type = "label"},
+    {tab = 3, name = "Enable Trigger", key = "TRIGGER_Enabled", type = "toggle"},
+    {tab = 3, name = "Delay (ms)", key = "TRIGGER_Delay", type = "slider", min = 0, max = 200, step = 10},
+    {tab = 3, name = "Team Check", key = "TRIGGER_TeamCheck", type = "toggle"}
+}
+
+local GUI = {
+    Frame = nil,
+    Position = nil,
+    Dragging = false,
+    DragOffset = Vector2.zero,
+    Items = {},
+    TabButtons = {},
+    ContentFrame = nil
+}
+
+function GUI.Create()
+    local menuW, menuH = 300, 380
+    local titleH, tabH, footerH = 24, 28, 22
+    
+    local main = Instance.new("Frame")
+    main.Name = "Menu"
+    main.BackgroundColor3 = Palette.MenuBg
+    main.BackgroundTransparency = 0.04
+    main.BorderSizePixel = 0
+    main.Size = UDim2.new(0, menuW, 0, menuH)
+    main.Position = UDim2.new(0, 20, 0.5, -menuH/2)
+    main.Active = true
+    main.Parent = UI.ScreenGui
+    GUI.Frame = main
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Palette.MenuBorder
+    stroke.Thickness = 1
+    stroke.Parent = main
+    
+    local title = Instance.new("Frame")
+    title.Name = "Title"
+    title.BackgroundColor3 = Palette.MenuTab
+    title.BorderSizePixel = 0
+    title.Size = UDim2.new(1, 0, 0, titleH)
+    title.Parent = main
+    
+    local titleText = Instance.new("TextLabel")
+    titleText.BackgroundTransparency = 1
+    titleText.Position = UDim2.new(0, 10, 0, 0)
+    titleText.Size = UDim2.new(0, 120, 1, 0)
+    titleText.Font = Enum.Font.GothamBold
+    titleText.TextSize = 14
+    titleText.TextColor3 = Palette.MenuAccent
+    titleText.TextXAlignment = Enum.TextXAlignment.Left
+    titleText.Text = "LOSTFRONT"
+    titleText.Parent = title
+    
+    local xenoTag = Instance.new("TextLabel")
+    xenoTag.BackgroundTransparency = 1
+    xenoTag.Position = UDim2.new(0, 100, 0, 0)
+    xenoTag.Size = UDim2.new(0, 60, 1, 0)
+    xenoTag.Font = Enum.Font.RobotoMono
+    xenoTag.TextSize = 10
+    xenoTag.TextColor3 = Color3.fromRGB(80, 255, 120)
+    xenoTag.TextXAlignment = Enum.TextXAlignment.Left
+    xenoTag.Text = "XENO"
+    xenoTag.Parent = title
+    
+    local hotkeyText = Instance.new("TextLabel")
+    hotkeyText.BackgroundTransparency = 1
+    hotkeyText.Position = UDim2.new(1, -90, 0, 0)
+    hotkeyText.Size = UDim2.new(0, 80, 1, 0)
+    hotkeyText.Font = Enum.Font.RobotoMono
+    hotkeyText.TextSize = 10
+    hotkeyText.TextColor3 = Palette.MenuTextDim
+    hotkeyText.TextXAlignment = Enum.TextXAlignment.Right
+    hotkeyText.Text = "[INS] [HOME]"
+    hotkeyText.Parent = title
+    
+    local tabFrame = Instance.new("Frame")
+    tabFrame.Name = "Tabs"
+    tabFrame.BackgroundTransparency = 1
+    tabFrame.Position = UDim2.new(0, 0, 0, titleH)
+    tabFrame.Size = UDim2.new(1, 0, 0, tabH)
+    tabFrame.Parent = main
+    
