@@ -1,0 +1,176 @@
+function ESP.Destroy(esp)
+    if not esp then return end
+    pcall(function() esp.Box:Destroy() end)
+    pcall(function() esp.Name:Destroy() end)
+    pcall(function() esp.Dist:Destroy() end)
+    pcall(function() esp.HealthBg:Destroy() end)
+    pcall(function() esp.HealthBar:Destroy() end)
+    for _, l in ipairs(esp.Skel) do pcall(function() l:Destroy() end) end
+    pcall(function() esp.AimLine:Destroy() end)
+    pcall(function() esp.LookingText:Destroy() end)
+    pcall(function() esp.Tracer:Destroy() end)
+end
+
+function ESP.HideAll()
+    for _, esp in pairs(ESP.cache) do ESP.Hide(esp) end
+end
+
+function ESP.Cleanup()
+    local toRemove = {}
+    for root, esp in pairs(ESP.cache) do
+        if not Cache.targets[root] then
+            ESP.Hide(esp)
+            ESP.Destroy(esp)
+            toRemove[#toRemove + 1] = root
+        end
+    end
+    for _, root in ipairs(toRemove) do ESP.cache[root] = nil end
+end
+
+function ESP.Render(esp, root, char, hum, cam, screenSize, screenCenter, dist)
+    local head = char:FindFirstChild("Head")
+    local headPos = head and head.Position or (root.Position + Vector3.new(0, 2, 0))
+    local feetPos = root.Position - Vector3.new(0, 3, 0)
+    local topPos = headPos + Vector3.new(0, 0.5, 0)
+    
+    local rs, ron = cam:WorldToViewportPoint(root.Position)
+    local hs = cam:WorldToViewportPoint(topPos)
+    local fs = cam:WorldToViewportPoint(feetPos)
+    
+    local onScreen = ron and rs.Z > 0
+    local isTeam = Cache.teamStatus[root] or false
+    local visible = Cache.visibility[root] or false
+    local col = isTeam and Palette.Team or (visible and Palette.EnemyVisible or Palette.Enemy)
+    local skelCol = isTeam and Palette.Team or (visible and Palette.SkeletonVisible or Palette.Skeleton)
+    local lookingAtYou = Cache.lookingAtYou[root] or false
+    
+    if onScreen then
+        local boxTop, boxBottom = hs.Y, fs.Y
+        local boxHeight = math.abs(boxBottom - boxTop)
+        local boxWidth = boxHeight * Tuning.BoxWidthRatio
+        local cx = rs.X
+        
+        if Config.ESP_Boxes then
+            esp.Box.Position = UDim2.new(0, cx - boxWidth/2, 0, boxTop)
+            esp.Box.Size = UDim2.new(0, boxWidth, 0, boxHeight)
+            esp.BoxStroke.Color = col
+            esp.Box.Visible = true
+        else
+            esp.Box.Visible = false
+        end
+        
+        if Config.ESP_Names then
+            esp.Name.Text = Util.getName(char)
+            esp.Name.Position = UDim2.new(0, cx - 100, 0, hs.Y - Tuning.NameOffset)
+            esp.Name.TextColor3 = col
+            esp.Name.Visible = true
+        else
+            esp.Name.Visible = false
+        end
+        
+        if Config.ESP_Distance then
+            esp.Dist.Text = math.floor(dist) .. "m"
+            esp.Dist.Position = UDim2.new(0, cx - 100, 0, fs.Y + Tuning.DistOffset)
+            esp.Dist.Visible = true
+        else
+            esp.Dist.Visible = false
+        end
+        
+        if Config.ESP_Health then
+            local pct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+            local barX = cx - boxWidth/2 - Tuning.HealthBarOffset
+            esp.HealthBg.Position = UDim2.new(0, barX - 1, 0, boxTop - 1)
+            esp.HealthBg.Size = UDim2.new(0, Tuning.HealthBarWidth + 2, 0, boxHeight + 2)
+            esp.HealthBg.Visible = true
+            local hh = boxHeight * pct
+            esp.HealthBar.Position = UDim2.new(0, barX, 0, boxBottom - hh)
+            esp.HealthBar.Size = UDim2.new(0, Tuning.HealthBarWidth, 0, hh)
+            esp.HealthBar.BackgroundColor3 = pct > 0.6 and Palette.HealthHigh or pct > 0.3 and Palette.HealthMid or Palette.HealthLow
+            esp.HealthBar.Visible = true
+        else
+            esp.HealthBg.Visible = false
+            esp.HealthBar.Visible = false
+        end
+        
+        if Config.ESP_Skeleton then
+            for i, b in ipairs(Bones) do
+                local p1, p2 = char:FindFirstChild(b[1]), char:FindFirstChild(b[2])
+                if p1 and p2 then
+                    local s1, o1 = cam:WorldToViewportPoint(p1.Position)
+                    local s2, o2 = cam:WorldToViewportPoint(p2.Position)
+                    if o1 and o2 and s1.Z > 0 and s2.Z > 0 then
+                        DrawLine(esp.Skel[i], s1.X, s1.Y, s2.X, s2.Y, skelCol, 1)
+                    else
+                        esp.Skel[i].Visible = false
+                    end
+                else
+                    esp.Skel[i].Visible = false
+                end
+            end
+        else
+            for _, l in ipairs(esp.Skel) do l.Visible = false end
+        end
+        
+        if Config.ESP_AimDir and head then
+            local aimEnd = head.Position + head.CFrame.LookVector * Tuning.AimLineLength
+            local headScreen, headOn = cam:WorldToViewportPoint(head.Position)
+            local aimScreen, aimOn = cam:WorldToViewportPoint(aimEnd)
+            if headOn and aimOn and headScreen.Z > 0 and aimScreen.Z > 0 then
+                DrawLine(esp.AimLine, headScreen.X, headScreen.Y, aimScreen.X, aimScreen.Y, Palette.AimDir, 2)
+            else
+                esp.AimLine.Visible = false
+            end
+        else
+            esp.AimLine.Visible = false
+        end
+        
+        if Config.ESP_LookingAtYou and lookingAtYou then
+            esp.LookingText.Position = UDim2.new(0, cx - 75, 0, hs.Y - 35)
+            esp.LookingText.Visible = true
+        else
+            esp.LookingText.Visible = false
+        end
+        
+        if Config.ESP_Tracers then
+            local tracerCol = visible and Palette.EnemyVisible or Palette.Tracer
+            DrawLine(esp.Tracer, screenCenter.X, screenSize.Y, cx, fs.Y, tracerCol, 1)
+        else
+            esp.Tracer.Visible = false
+        end
+    else
+        ESP.Hide(esp)
+    end
+end
+
+function ESP.Step(cam, screenSize, screenCenter)
+    if not Config.ESP_Enabled then
+        ESP.HideAll()
+        return
+    end
+    
+    ESP.Cleanup()
+    
+    local myRoot = Cache.myRoot
+    for root, char in pairs(Cache.targets) do
+        if not root or not root.Parent or not char then
+            if ESP.cache[root] then ESP.Hide(ESP.cache[root]) end
+        else
+            local hum = Cache.humanoids[root]
+            if not hum or not hum.Parent or hum.Health <= 0 then
+                if ESP.cache[root] then ESP.Hide(ESP.cache[root]) end
+            elseif Config.ESP_TeamCheck and Cache.teamStatus[root] then
+                if ESP.cache[root] then ESP.Hide(ESP.cache[root]) end
+            else
+                if not ESP.cache[root] then ESP.Create(root) end
+                local esp = ESP.cache[root]
+                local dist = myRoot and (root.Position - myRoot.Position).Magnitude or 0
+                
+                if dist > Config.ESP_MaxDist then
+                    ESP.Hide(esp)
+                else
+                    ESP.Render(esp, root, char, hum, cam, screenSize, screenCenter, dist)
+                end
+            end
+        end
+    end
+end
